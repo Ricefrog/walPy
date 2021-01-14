@@ -1,6 +1,8 @@
 #! /usr/bin/python
 
 import os
+import sys
+import time
 import PIL.Image
 import PIL.ImageTk
 from collections import defaultdict
@@ -8,7 +10,7 @@ import tkinter as tk
 from tkinter import *
 from tkinter import font as tkFont
 
-tolerance = 15
+tolerance = 20
 
 def replace_color(source, replacement, image):
     pixels = image.load()
@@ -80,9 +82,73 @@ def merge_color_map(color_map):
             new_color_map[key] = val
     return new_color_map
 
+def similarity_index(col_1, col_2):
+    col_1 = hex_to_rgb(col_1)
+    #print('col_1:', col_1)
+    #print('col_2:', col_2)
+    return sum([abs(col_1[s] - col_2[s]) for s in range(3)])
 
+def get_nearest_match(palette, pixel):
+    closest = (0, similarity_index(palette[0], pixel))
+
+    for i in range(1, len(palette)):
+        cur = similarity_index(palette[i], pixel)
+        if cur < closest[1]:
+            closest = (i, cur)
+    return hex_to_rgb(palette[closest[0]])
+
+def progress(count, total, status=''):
+    bar_len = 60
+    filled_len = int(round(bar_len * count / float(total)))
+
+    percents = round(100.0 * count / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', status))
+    sys.stdout.flush()
+
+def automatch(palette, image):
+    start = time.perf_counter()
+    palette = palette[1:]
+    pixels = image.load()
+    count = 0
+    width, height = image.size
+    total = width * height
+
+    for i in range(width):
+        for j in range(height):
+            pixels[i, j] = get_nearest_match(palette, pixels[i, j])
+            count += 1
+            progress(count, total, status='Automatching')
+    print('Automatch complete')
+    print(f'Took {(time.perf_counter() - start):.2f} seconds.')
+    return image
+
+def lazy_automatch(palette, color_map, image):
+    print('Lazy automatching...')
+    start = time.perf_counter()
+    palette = palette[1:]
+
+    for key, coords in color_map.items():
+        for coord in coords:
+            image.putpixel(coord, get_nearest_match(palette, key))
+    print('Lazy automatching complete')
+    print(f'Took {time.perf_counter() - start}:.2f seconds.')
+    return image
+
+
+#original_image_path = './images/crazyFrog_1.jpg'
+#original_image_path = './images/catSkirt.jpg'
 original_image_path = './images/Asuka_98.jpg'
-new_image_path = './images/newImage.jpg'
+#original_image_path = './images/medieval1.jpg'
+#original_image_path = './images/aesCar.png'
+#original_image_path = './images/grassSky.jpg'
+#original_image_path = './images/lum.png'
+#original_image_path = './images/aesfield.jpg'
+#original_image_path = './images/pimpPepe.jpg'
+
+new_image_path = './images/newImage.' + original_image_path[-3:]
+print('new_image_path', new_image_path)
 infile = PIL.Image.open(original_image_path)
 
 width, height = infile.size
@@ -104,9 +170,7 @@ for i in range(width):
         color_map[pixels[i, j]].append((i, j))
 
 print('number of unique colors before merge:', len(unique_colors.keys()))
-print('in color map:', len(color_map.keys()))
 
-number_of_top_colors = 10
 # sort unique colors by count
 unique_colors = {k: v for k, v in sorted(unique_colors.items(), 
                  key=lambda item: item[1], reverse=True)}
@@ -116,19 +180,24 @@ color_map = {k: v for k, v in sorted(color_map.items(),
 unique_colors = merge_similar_colors(unique_colors)
 color_map = merge_color_map(color_map)
 
+if len(unique_colors.keys()) >= 10:
+    number_of_top_colors = 10
+else:
+    number_of_top_colors = len(unique_colors.keys())
+
 print('number of unique colors after merge:', len(unique_colors.keys()))
-print('in color map:', len(color_map.keys()))
 top_colors = [list(unique_colors.keys())[s] for s in range(number_of_top_colors)]
 
 print('Top colors:')
 for col in top_colors:
     print(f'Color: {col}, {rgb_to_hex(col)}, Count: {unique_colors[col]}')
-    print(f'color_map count: {len(color_map[col])}')
+    #print(f'color_map count: {len(color_map[col])}')
 
 infile.save(new_image_path)
 
 root = tk.Tk()
 root.geometry("800x800")
+root['padx'] = 50
 myFont = tkFont.Font(family='Roboto', size='14', weight='bold')
 buttonFont = tkFont.Font(family='Roboto', size='12', weight='bold')
 
@@ -159,15 +228,32 @@ class walPyGUI:
         self.image_frame.pack(side='bottom')
 
         self.palette = ['unchanged', 
-     "#6e5346",
-     "#e35b00",
-     "#5cab96",
-     "#e3cd7b",
-     "#0f548b",
-     "#e35b00",
-     "#06afc7",
-     "#f0f1ce",
-     ]
+         "#684c31",
+         "#ff8a3a",
+         "#aecab8", 
+         "#ffc878",
+         "#67a0ce",
+         "#ff8a3a",
+         "#83a7b4",
+         "#fefff1",
+         "#6e5346",
+         "#e35b00",
+         "#5cab96",
+         "#e3cd7b",
+         "#0f548b",
+         "#06afc7",
+         "#f0f1ce",
+         "#fadadd"
+         ]
+
+        self.palette_frame = tk.Frame(self.master)
+        for i in range(1, len(self.palette)):
+            temp_label = tk.Label(self.palette_frame,
+                                  font=myFont,
+                                  text=self.palette[i],
+                                  fg=self.palette[i])
+            temp_label.pack(side='left')
+        self.palette_frame.pack(side='right')
 
         self.color_subframes = []
         self.colors_frame = tk.Frame(self.master)
@@ -181,6 +267,7 @@ class walPyGUI:
                                      text='Reset',
                                      command=self.reset)
         self.reset_button.pack()
+        self.automatch()
 
     def create_color_widgets(self):
         for i in range(number_of_top_colors):
@@ -238,6 +325,22 @@ class walPyGUI:
         self.f_alt_img = PIL.ImageTk.PhotoImage(self.alt_img)
         self.alt.config(image=self.f_alt_img)
         self.alt.image = self.f_alt_img
+
+    def automatch(self):
+        matched_image =  PIL.Image.open(self.original_path)
+        matched_image = automatch(self.palette[3:6], matched_image)
+        #matched_image = automatch(self.palette, matched_image)
+        #matched_image = lazy_automatch(self.palette, color_map, matched_image)
+
+        os.remove(new_image_path)
+        matched_image.save(new_image_path)
+
+        self.alt_img = PIL.Image.open(self.altered_path)
+        self.alt_img = self.alt_img.resize((600, 600), PIL.Image.ANTIALIAS) 
+        self.f_alt_img = PIL.ImageTk.PhotoImage(self.alt_img)
+        self.alt.config(image=self.f_alt_img)
+        self.alt.image = self.f_alt_img
+
 
     def reset(self):
         new_altered_image = PIL.Image.open(self.original_path)
